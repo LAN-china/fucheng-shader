@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>浮城 · 壁纸</title>
+<style>
+  :root { --panel: rgba(14, 22, 38, 0.66); --line: rgba(255,255,255,0.11); --ink: #eef3fb; --dim: rgba(238,243,251,0.58); --accent: #f2c27a; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: "Noto Serif SC", "Songti SC", "STSong", serif; color: var(--ink); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #title { position: fixed; left: 4.2vw; top: 7.5vh; pointer-events: none; text-shadow: 0 2px 22px rgba(10,20,50,0.35); transition: opacity .6s; }
+  #title .kicker { font: 600 11px/1 "Inter", "Helvetica Neue", Arial, sans-serif; letter-spacing: .32em; opacity: .9; }
+  #title h1 { font-weight: 400; font-size: clamp(40px, 5.4vw, 96px); letter-spacing: .14em; margin: 18px 0 14px; }
+  #title .by { font: 500 12px/1 "Inter", "Helvetica Neue", Arial, sans-serif; letter-spacing: .2em; opacity: .9; }
+  #title .by i { font-family: Georgia, serif; font-size: 18px; letter-spacing: .04em; margin-left: 10px; }
+  #panel { position: fixed; right: 18px; top: 50%; transform: translateY(-50%); width: 290px; background: var(--panel); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 14px; font-family: "Inter", "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif; box-shadow: 0 18px 50px rgba(5,10,30,0.35); transition: opacity .4s, transform .4s; }
+  #panel.hidden { opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(20px); }
+  .ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .ph b { font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+  .ph .btns { display: flex; gap: 6px; }
+  .ph button, .foot button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); color: var(--ink); border-radius: 7px; font: 500 11px/1 inherit; padding: 7px 9px; cursor: pointer; }
+  .ph button:hover, .foot button:hover { background: rgba(255,255,255,0.15); }
+  .row { padding: 9px 0 8px; border-top: 1px solid var(--line); }
+  .row .lab { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--dim); margin-bottom: 9px; }
+  .row .lab span:last-child { color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 3px; border-radius: 3px; background: linear-gradient(90deg, var(--accent) var(--p, 50%), rgba(255,255,255,0.18) var(--p, 50%)); outline: none; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fffaf0; border: 3px solid var(--accent); box-shadow: 0 0 0 4px rgba(242,194,122,0.2); cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #fffaf0; border: 3px solid var(--accent); cursor: pointer; }
+  .foot { display: flex; gap: 8px; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--line); }
+  .foot button { flex: 1; padding: 9px 0; }
+  .hint { margin-top: 10px; font-size: 10.5px; color: var(--dim); text-align: center; letter-spacing: .04em; }
+  #cursor { position: fixed; left: 0; top: 0; width: 22px; height: 22px; pointer-events: none; display: none; z-index: 10; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.45)); }
+  #fade { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+  body.wall #title, body.wall #panel { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="title">
+  <div class="kicker">PROCEDURAL LANDSCAPES / 02</div>
+  <h1 data-zh="浮城" data-en="Skybound">浮城</h1>
+  <div class="by"><span data-zh="原创着色器" data-en="ORIGINAL SHADER">原创着色器</span><i>Lan</i></div>
+</div>
+
+<div id="panel">
+  <div class="ph">
+    <b data-zh="场景参数" data-en="Scene">场景参数</b>
+    <div class="btns"><button id="lang">EN</button><button id="close" title="H">✕</button></div>
+  </div>
+  <div id="rows"></div>
+  <div class="foot">
+    <button id="seed" data-zh="换一片云" data-en="New clouds">换一片云</button>
+    <button id="auto" data-zh="时间流动：关" data-en="Time flow: off">时间流动：关</button>
+  </div>
+  <div class="hint" data-zh="按 H 隐藏 / 显示面板" data-en="Press H to toggle panel">按 H 隐藏 / 显示面板</div>
+</div>
+
+<svg id="cursor" viewBox="0 0 24 24"><path d="M3 2 L3 19 L7.6 14.8 L10.6 21.6 L13.6 20.3 L10.6 13.6 L17 13.6 Z" fill="#fff" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></svg>
+<div id="fade"></div>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2 uRes;
+uniform float uTime, uCam, uZoom, uTod, uCover, uBrush, uRays, uGrain, uSeed, uNight, uSunH, uMoon, uWarm, uSunX;
+uniform vec3 uSkyTop, uSkyBot, uSun, uLit, uMid, uShade, uSil;
+
+float h1(float n){ n = fract(n*0.1031); n *= n + 33.33; n *= n + n; return fract(n); }
+float h2(vec2 p){ vec3 q = fract(vec3(p.xyx)*0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y)*q.z); }
+float n1(float x){ float i = floor(x), f = fract(x); float u = f*f*(3.0-2.0*f); return mix(h1(i), h1(i+1.0), u); }
+float n2(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(h2(i), h2(i+vec2(1,0)), u.x), mix(h2(i+vec2(0,1)), h2(i+vec2(1,1)), u.x), u.y); }
+float fbmT(float x, float t){ float v = 0.0, a = 0.5; vec2 q = vec2(x, t); for(int i=0;i<4;i++){ v += a*n2(q); q = q*2.07 + vec2(13.1, 5.3); a *= 0.5; } return v; }
+float fbm1(float x){ float v = 0.0, a = 0.5; for(int i=0;i<4;i++){ v += a*n1(x); x = x*2.07 + 13.1; a *= 0.5; } return v; }
+const mat2 R = mat2(1.6, 1.2, -1.2, 1.6);
+float fbm2(vec2 p){ float v = 0.0, a = 0.5; for(int i=0;i<5;i++){ v += a*n2(p); p = R*p + 7.3; a *= 0.5; } return v; }
+float fbm2s(vec2 p){ float v = 0.0, a = 0.5; for(int i=0;i<3;i++){ v += a*n2(p); p = R*p + 7.3; a *= 0.5; } return v; }
+
+// painterly brush-stroke field: anisotropic noise along a slowly varying direction
+float brushTex(vec2 p){
+  float a = (n2(p*1.3 + 11.0) - 0.5)*1.5 + 0.12;
+  vec2 d = vec2(cos(a), sin(a));
+  vec2 q = vec2(dot(p, d), dot(p, vec2(-d.y, d.x)));
+  return n2(q*vec2(16.0, 120.0))*0.6 + n2(q*vec2(34.0, 240.0) + 5.0)*0.4;
+}
+
+// ---------- puffy cumulus: stacked rows of round lumps, each lit like a sphere ----------
+vec3 bandColor(float l){
+  vec3 c = mix(uShade, uMid, smoothstep(0.30, 0.335, l));
+  c = mix(c, uLit, smoothstep(0.60, 0.635, l));
+  c += uSun*0.07*smoothstep(0.66, 1.0, l);
+  return c;
+}
+void puffLayer(inout vec3 col, vec2 p, vec2 L, float base, float H, float fx, float sd, float sep,
+               float w, int rows, float rowDrop, float haze, float dark, float flatY, float amb, float br, float aa){
+  float prof = smoothstep(sep, sep + 0.33, fbmT(p.x*fx + sd, uTime*0.055 + sd) + (uCover - 0.5)*0.4);
+  float edgeN = (fbm2s(p*vec2(10.0, 12.0) + sd + vec2(uTime*0.05, -uTime*0.12)) - 0.5)*0.018;
+  vec3 L3 = normalize(vec3(L, 0.75));
+  for (int j = 0; j < 4; j++) {
+    if (j >= rows) break;
+    float fj = float(j);
+    float yj = base + H*prof*(1.0 - fj*0.30) - fj*rowDrop;
+    float wj = w*(1.0 + 0.22*fj);
+    float best = -1e3; vec2 bc = vec2(0.0); float rr = 1.0; float pid = 0.0;
+    float px_ = p.x + uTime*0.0045*(fj - 1.0);
+    float cell0 = floor(px_/wj);
+    for (int k = -1; k <= 1; k++) {
+      float cell = cell0 + float(k);
+      float hs = h1(cell*1.31 + sd*3.0 + fj*17.0);
+      float cx = (cell + 0.5 + (hs - 0.5)*0.5)*wj;
+      float hr = h1(cell*2.17 + sd + fj*7.0);
+      float r = wj*mix(0.48, 1.25, hr*hr)*(0.55 + 0.45*prof);
+      r *= 1.0 + 0.16*sin(uTime*(0.35 + 0.45*hs) + hr*6.283);
+      float cy = yj - r*0.35 + (h1(cell*3.7 + fj)-0.5)*rowDrop*0.6 + 0.004*sin(uTime*(0.5 + 0.3*hr) + hs*9.0);
+      float dx = px_ - cx;
+      float top = cy + sqrt(max(0.0, r*r - dx*dx))*flatY;
+      if (top > best) { best = top; bc = vec2(cx - (px_ - p.x), cy); rr = r; pid = hs*0.6 + hr*0.4; }
+    }
+    float d = best + edgeN - p.y;
+    float m = smoothstep(-aa, aa, d);
+    if (m <= 0.0) continue;
+    vec2 n = (p - bc)/vec2(rr, rr*flatY);
+    float ln = length(n);
+    n /= max(1.0, ln);
+    float nz = sqrt(max(0.0, 1.0 - dot(n, n)));
+    float lam = dot(vec3(n, nz), L3);
+    float l = amb + lam*0.55 - fj*0.05 - dark - clamp((ln - 1.0)*0.25, 0.0, 0.3);
+    l += (br - 0.5)*0.06*uBrush;
+    vec3 c = bandColor(l);
+    // per-lump tint: pinks, peaches, lavenders, reds, creams — strongest at golden hour / dusk
+    float tsel = fract(pid*7.13 + fj*0.31 + sd*0.07);
+    vec3 tint = tsel < 0.2 ? vec3(1.06, 0.74, 0.86) : tsel < 0.4 ? vec3(1.08, 0.90, 0.72) : tsel < 0.58 ? vec3(0.84, 0.80, 1.10)
+              : tsel < 0.72 ? vec3(1.10, 0.62, 0.60) : tsel < 0.86 ? vec3(1.05, 1.00, 0.88) : vec3(0.92, 0.70, 0.98);
+    float tk = mix(0.18, 0.75, uWarm)*(1.0 - uNight*0.7);
+    c = mix(c, c*tint, tk);
+    // bright rim on the lit side of each lump
+    c = mix(c, uLit*1.05 + uSun*0.05, (1.0 - smoothstep(0.0, 0.0045, d))*smoothstep(0.1, 0.5, lam)*0.55);
+    c = mix(c, uSkyBot, haze);
+    col = mix(col, c, m);
+  }
+}
+
+
+// ---------- floating island with a city; lx, ly are island-local (scaled) coordinates ----------
+vec3 neonCol(float h){ return h < 0.33 ? vec3(1.0, 0.18, 0.62) : h < 0.66 ? vec3(0.15, 0.95, 1.0) : vec3(1.0, 0.68, 0.18); }
+void island(inout vec3 col, float X, float Y, float cx, float yc, float sc, float hz, float detail, float aa, float seedI){
+  float lx = (X - cx)/sc, ly = (Y - yc)/sc, a = aa/sc;
+  float u = lx/0.25, au = abs(u);
+  if (au > 1.5 || ly < -0.36 || ly > 0.26) return;
+  float under = -0.010 - 0.12*pow(max(0.0, 1.0 - au*au), 1.3)*(0.75 + 0.35*n1(lx*40.0 + seedI)) - 0.01*n1(lx*120.0 + seedI);
+  float rock = step(au, 1.0)*smoothstep(under - a, under + a, ly)*smoothstep(a, -a, ly);
+  // industrial underside: hanging pipes and three thrusters
+  float pipes = 0.0, thr = 0.0;
+  if (detail > 0.5) {
+    float pc = floor(lx/0.022);
+    float plen = 0.02 + 0.05*h1(pc*4.1 + 2.0);
+    float pxl = fract(lx/0.022) - 0.5;
+    pipes = step(au, 0.85)*step(0.55, h1(pc*1.9))*step(abs(pxl), 0.09)*step(under - plen, ly)*step(ly, under + 0.01);
+    for (int k = 0; k < 3; k++) {
+      float tx = (float(k) - 1.0)*0.085;
+      float tu = (tx/0.25);
+      float tb = -0.010 - 0.12*pow(max(0.0, 1.0 - tu*tu), 1.3)*0.85;
+      vec2 q = vec2(lx - tx, ly - tb);
+      thr = max(thr, step(q.y, 0.0)*step(-0.03, q.y)*step(abs(q.x), 0.010 + (-q.y)*0.35));
+    }
+  }
+  // skyline
+  float bw = 0.0085;
+  float bi = floor(lx/bw);
+  float hb = h1(bi*1.7 + 3.0 + seedI);
+  float env = max(0.0, 1.0 - pow(au, 2.2));
+  float bh = (0.010 + 0.05*hb*hb)*env + 0.005*env;
+  float spire = step(0.93, h1(bi*3.3 + 1.0 + seedI))*env*0.06;
+  float bx = fract(lx/bw);
+  float bld = step(au, 0.92)*step(-0.002, ly)*step(ly, bh);
+  float sp2 = step(au, 0.9)*step(abs(bx - 0.5), 0.12 + 0.3*(1.0 - (ly - bh)/max(spire, 1e-3)))*step(bh, ly)*step(ly, bh + spire);
+  // landmark pieces (clean, modern): central tower + dome + needle, a halo ring, a sphere hall, twin slanted towers
+  float tower = step(abs(lx), 0.009)*step(0.0, ly)*step(ly, 0.11)*detail;
+  float dome = step(length(vec2(lx, ly - 0.11)), 0.016)*step(0.11, ly)*detail;
+  float needle = step(abs(lx), 0.0015)*step(ly, 0.155)*step(0.0, ly)*detail;
+  vec2 rq = vec2(lx, (ly - 0.075)*4.5);
+  float ring = step(abs(length(rq) - 0.034), 0.0028*4.5*0.35)*step(0.0, -rq.y + 0.06)*detail;
+  float sphere = step(length(vec2(lx + 0.13, ly - 0.032)), 0.021)*detail;
+  float twin = 0.0;
+  for (int k = 0; k < 2; k++) {
+    float tx = 0.095 + float(k)*0.024;
+    float th = 0.085 - float(k)*0.012 - (lx - tx)*0.6;
+    twin = max(twin, step(abs(lx - tx), 0.008)*step(0.0, ly)*step(ly, th)*detail);
+  }
+  float isB = max(max(max(bld, sp2), max(tower, dome)), max(max(needle, ring), max(sphere, twin)));
+  float m = max(max(rock, isB), max(pipes, thr));
+  if (m > 0.0) {
+    vec3 cc = mix(uSil, uShade, 0.55);
+    cc = mix(cc, uLit*0.9, 0.14*smoothstep(0.3, 1.0, h2(vec2(bi, 1.0)))*(1.0 - uNight)*isB);
+    // glassy lit edge on landmarks
+    cc = mix(cc, uLit, (ring + sphere*smoothstep(0.0, 0.02, ly - 0.032 + (lx + 0.13)*0.3))*0.25*(1.0 - uNight));
+    vec3 rcol = mix(uSil, uShade, 0.35) + vec3(0.03, 0.01, 0.0);
+    rcol = mix(rcol, uLit*0.7, smoothstep(-0.02, 0.0, ly)*0.25*(1.0 - uNight));
+    rcol *= 0.92 + 0.12*n1(ly*160.0 + n1(lx*30.0)*3.0);
+    rcol = mix(rcol, uSil*0.8, max(pipes, thr)*0.6);
+    cc = mix(rcol, cc, isB);
+    cc = mix(cc, uSkyBot, hz);
+    // windows switch on one by one from golden hour ("华灯初上")
+    vec2 wg = vec2(lx/0.0042, ly/0.006);
+    vec2 wid = floor(wg);
+    float win = step(0.55, h2(wid + 9.0 + seedI))*step(0.25, fract(wg.x))*step(fract(wg.x), 0.75)*step(0.3, fract(wg.y))*step(fract(wg.y), 0.8);
+    win *= step(0.0, ly)*clamp(bld + tower + twin, 0.0, 1.0);
+    float onAt = 0.30 + 0.40*h2(wid + 4.0);
+    float lit = smoothstep(onAt, onAt + 0.03, uTod);
+    vec3 wc = mix(vec3(1.0, 0.78, 0.42), vec3(0.45, 1.0, 0.85), step(0.8, h2(wid + 2.0)));
+    cc = mix(cc, wc*1.2, win*lit*(0.75 + 0.25*sin(uTime*2.0 + h2(wid)*30.0))*(1.0 - hz*0.8));
+    // night city: vertical neon signs on some buildings (with glitch flicker)
+    if (uNight > 0.01 && detail > 0.5) {
+      float hn = h1(bi*5.3 + 7.0);
+      float sign_ = step(0.72, hn)*step(abs(bx - 0.5), 0.16)*step(bh*0.35, ly)*step(ly, bh*0.92)*bld;
+      float glitch = step(0.93, h1(bi + floor(uTime*9.0)));
+      float seg = step(0.25, fract(ly/0.004));
+      cc = mix(cc, neonCol(fract(hn*13.0))*1.6, sign_*seg*uNight*(1.0 - glitch));
+      // neon trims on landmarks
+      cc = mix(cc, vec3(0.2, 0.95, 1.0)*1.5, ring*uNight);
+      cc = mix(cc, vec3(1.0, 0.25, 0.7)*1.3, step(abs(abs(lx) - 0.009), 0.0012)*tower*uNight);
+      cc = mix(cc, vec3(1.0, 0.7, 0.3)*1.4, step(0.6, fract(ly/0.012))*twin*step(abs(lx - 0.095), 0.002)*uNight);
+    }
+    col = mix(col, cc, m);
+  }
+  if (detail > 0.5) {
+    // thruster glow
+    for (int k = 0; k < 3; k++) {
+      float tx = (float(k) - 1.0)*0.085;
+      float tu = (tx/0.25);
+      float tb = -0.010 - 0.12*pow(max(0.0, 1.0 - tu*tu), 1.3)*0.85 - 0.032;
+      vec2 q = vec2(lx - tx, ly - tb);
+      float fl = exp(-length(q*vec2(3.0, 1.0))*45.0)*(0.8 + 0.2*sin(uTime*20.0 + float(k)));
+      col += mix(vec3(1.0, 0.75, 0.45), vec3(0.3, 0.9, 1.0), uNight)*fl*mix(0.35, 0.9, uNight);
+    }
+    // night: neon halo around the skyline, rooftop holographic blooms
+    if (uNight > 0.01) {
+      float halo = exp(-max(0.0, ly - bh)*60.0)*step(au, 0.95)*step(-0.002, ly)*(1.0 - isB);
+      col += mix(vec3(1.0, 0.2, 0.6), vec3(0.2, 0.9, 1.0), smoothstep(-0.2, 0.2, lx))*halo*0.12*uNight;
+      for (int k = 0; k < 4; k++) {
+        float fk = float(k);
+        float fx = mix(-0.19, 0.20, fk/3.0) + 0.02*sin(fk*3.0);
+        float fy = 0.072 + 0.015*sin(fk*2.1) + 0.004*sin(uTime*1.3 + fk);
+        vec2 q = vec2(lx - fx, ly - fy);
+        float ang = atan(q.y, q.x) + uTime*0.4*(mod(fk, 2.0)*2.0 - 1.0);
+        float rr = 0.011*(0.55 + 0.45*abs(cos(ang*2.5)));
+        float petal = smoothstep(rr + a, rr - a, length(q));
+        float scan = 0.75 + 0.25*step(0.5, fract(ly*700.0 + uTime*3.0));
+        col = mix(col, vec3(1.0, 0.45, 0.85)*1.3, petal*0.55*scan*uNight);
+        col += vec3(1.0, 0.35, 0.8)*exp(-length(q)*90.0)*0.35*uNight;
+      }
+    }
+  }
+  // waterfalls pouring off the rim, ending in mist
+  if (detail > 0.5) {
+    for (int k = 0; k < 2; k++) {
+      float fxk = k == 0 ? -0.205 : 0.185;
+      float top = -0.004;
+      float len = 0.20;
+      float dy = top - ly;
+      float wdt = 0.0055 + dy*0.045;
+      float inF = step(0.0, dy)*step(dy, len)*smoothstep(wdt + a, wdt - a, abs(lx - fxk + 0.002*sin(dy*40.0)));
+      float streak = n2(vec2((lx - fxk)*900.0, ly*25.0 + uTime*3.5));
+      float fade = 1.0 - smoothstep(len*0.45, len, dy);
+      vec3 wcol = mix(uMid, uLit, 0.55 + 0.45*streak);
+      wcol = mix(wcol, uSkyBot, hz*0.8);
+      wcol += vec3(0.4, 0.2, 0.6)*uNight*0.3;
+      col = mix(col, wcol, inF*fade*(0.65 + 0.3*streak));
+      float mist = exp(-length(vec2((lx - fxk)*1.0, (dy - len*0.65)*1.6))*40.0);
+      col = mix(col, mix(uLit, uSkyBot, 0.4), mist*0.35*(0.7 + 0.3*n2(vec2(lx*60.0, ly*60.0 - uTime))));
+    }
+  }
+  float glow = exp(-abs(ly + 0.05)*16.0)*exp(-au*au*2.5);
+  col += vec3(0.25, 0.95, 0.85)*glow*uNight*0.16*(1.0 - hz);
+}
+
+// ---------- sky whale (faces -x); returns coverage, writes colour ----------
+void whale(inout vec3 col, vec2 P, vec2 c, float sc, float hz, vec2 lightP, float aa){
+  vec2 q = (P - c)/sc;
+  if (abs(q.x) > 0.16 || abs(q.y) > 0.07) return;
+  float a = aa/sc;
+  if (uNight > 0.3) q.x += 0.006*step(0.93, h1(floor(uTime*8.0)))*(h1(floor(P.y*60.0) + floor(uTime*8.0)) - 0.5);
+  float u = q.x/0.11;                  // head at u=-1, tail at u=+1
+  float bend = 0.010*sin(uTime*1.2 - u*2.0)*smoothstep(-0.2, 1.0, u);
+  float y = q.y - bend;
+  float uu = clamp(u, -1.0, 1.0);
+  float th = 0.030*pow(max(0.0, 1.0 - uu*uu), 0.55)*(1.0 - 0.55*smoothstep(-0.2, 1.0, u)) + 0.002;
+  float yc = -0.006*(1.0 - uu*uu);     // belly sag
+  float body = step(abs(u), 1.0)*smoothstep(a, -a, abs(y - yc) - th);
+  // fluke
+  vec2 f = vec2(q.x - 0.118, y);
+  float flk = 0.0;
+  for (int s2 = -1; s2 <= 1; s2 += 2) {
+    float sg2 = float(s2);
+    vec2 lq = f - vec2(0.016, sg2*0.011);
+    float an = sg2*0.75;
+    lq = vec2(lq.x*cos(an) + lq.y*sin(an), -lq.x*sin(an) + lq.y*cos(an));
+    flk = max(flk, smoothstep(a, -a, length(lq*vec2(1.0, 3.0)) - 0.017));
+  }
+  flk *= step(-0.004, f.x);
+  // pectoral fin
+  vec2 pf = vec2(q.x + 0.03, y - yc + 0.02);
+  pf = vec2(pf.x*0.8 + pf.y*0.6, -pf.x*0.6 + pf.y*0.8);
+  float fin = smoothstep(a, -a, length(pf*vec2(1.0, 3.5)) - 0.022)*step(-0.03, q.y - yc + 0.03);
+  float m = max(max(body, flk), fin);
+  if (m <= 0.0) return;
+  float topLit = smoothstep(yc - th*0.2, yc + th, y);
+  vec3 wc = mix(uShade*0.75, uMid*0.95, topLit*0.8);
+  wc = mix(wc, uLit, smoothstep(yc + th*0.65, yc + th, y)*0.45*(1.0 - uNight));
+  // throat grooves on the belly
+  float groove = step(y, yc - th*0.35)*step(u, 0.1)*step(0.55, fract((y - yc)*420.0));
+  wc *= 1.0 - groove*0.12;
+  // eye
+  wc = mix(wc, uSil, step(length(vec2(u + 0.80, (y - yc - 0.004)/0.11)), 0.035));
+  // bioluminescent spots at night
+  vec2 sg = vec2(u*14.0, (y - yc)*260.0);
+  float spot = step(0.7, h2(floor(sg)))*smoothstep(0.35, 0.1, length(fract(sg) - 0.5))*body;
+  wc += vec3(0.35, 0.95, 1.0)*spot*uNight*(0.6 + 0.4*sin(uTime*2.0 + floor(sg.x)));
+  wc = mix(wc, uSkyBot, hz*(1.0 - uNight));
+  // night: becomes a translucent hologram with scanlines and glitch bands
+  float scan = 0.55 + 0.45*step(0.45, fract(P.y*520.0 - uTime*2.0));
+  float band = step(0.96, n1(P.y*90.0 + floor(uTime*7.0)*13.0));
+  vec3 holo = mix(vec3(0.1, 0.85, 1.0), vec3(1.0, 0.3, 0.8), smoothstep(-0.5, 1.0, u))*(0.55 + 0.6*topLit)*scan;
+  float edge = 1.0 - smoothstep(0.0, 0.004, th - abs(y - yc));
+  holo += vec3(0.6, 1.0, 1.0)*edge*body*0.8;
+  wc = mix(wc, holo, uNight);
+  float alpha = mix(1.0, 0.62 + band*0.3, uNight);
+  col = mix(col, wc, m*alpha);
+  col += vec3(0.1, 0.7, 1.0)*exp(-abs(q.y)*30.0)*step(abs(q.x), 0.13)*0.05*uNight;
+}
+
+// ---------- hot-air balloon ----------
+void balloon(inout vec3 col, vec2 P, vec2 c, float r, vec3 c1, vec3 c2, float hz, vec2 lightP, float aa, float seedB){
+  vec2 q = (P - c)/r;
+  if (abs(q.x) > 1.3 || q.y > 1.3 || q.y < -2.4) return;
+  float a = aa/r;
+  // envelope: circle on top, tapering cone below
+  float circ = length(q) - 1.0;
+  float cone = abs(q.x) - (1.0 - smoothstep(-0.1, -1.25, q.y)*0.72)*sqrt(max(0.0, 1.0 - 0.0*q.y));
+  float envD = q.y > 0.0 ? circ : max(cone*0.9, -q.y - 1.28);
+  float envM = smoothstep(a, -a, envD);
+  float basket = step(abs(q.x), 0.16)*step(abs(q.y + 1.78), 0.13);
+  float ropes = step(q.y, -1.25)*step(-1.66, q.y)*step(abs(abs(q.x) - mix(0.27, 0.15, (-1.25 - q.y)/0.41)), 0.025);
+  float m = max(max(envM, basket), ropes);
+  if (m <= 0.0) return;
+  // stripes follow the curvature
+  float ang = asin(clamp(q.x/max(0.2, sqrt(max(0.04, 1.0 - min(q.y, 0.95)*min(q.y, 0.95)))), -1.0, 1.0));
+  float stripe = step(0.5, fract(ang*2.6 + 0.25));
+  vec3 bc = mix(c1, c2, stripe);
+  vec2 n = q; float ln = length(n); n /= max(1.0, ln);
+  float lam = dot(vec3(n, sqrt(max(0.0, 1.0 - dot(n, n)))), normalize(vec3(normalize(lightP - c), 0.8)));
+  bc *= 0.55 + 0.55*clamp(lam, 0.0, 1.0);
+  bc = mix(bc, bc*uLit*1.15, 0.25);
+  bc *= mix(1.0, 0.45, uNight);
+  vec3 dark = uSil*1.2;
+  vec3 cc = mix(dark, bc, envM);
+  // burner glow at night / dusk
+  float burn = exp(-length(q - vec2(0.0, -1.3))*4.0)*(0.6 + 0.4*sin(uTime*13.0 + seedB*5.0));
+  cc += vec3(1.0, 0.55, 0.2)*burn*smoothstep(0.4, 0.8, uTod)*envM*0.8;
+  cc = mix(cc, uSkyBot, hz);
+  col = mix(col, cc, m);
+}
+
+void main(){
+  vec2 frag = gl_FragCoord.xy;
+  float aspect = uRes.x/uRes.y;
+  vec2 uv = frag/uRes.y;
+  vec2 C = vec2(aspect*0.5, 0.42);
+  vec2 P = (uv - C)/uZoom + C;
+  float aa = 1.6/(uRes.y*uZoom);
+  float br = brushTex(P*vec2(1.0, 1.0) + vec2(uCam*0.02, 0.0));
+  float sd = uSeed*1.37;
+
+  // ---------- sky ----------
+  float sy = clamp(P.y, 0.0, 1.3);
+  vec3 col = mix(uSkyBot, uSkyTop, smoothstep(0.25, 1.1, sy));
+  col = mix(col, uSkyTop*0.85, smoothstep(0.9, 1.3, sy)*0.5);
+  vec2 sunP = vec2(uSunX*aspect, uSunH);
+  float sdist = length(P - sunP);
+  float sunVis = 1.0 - uMoon;
+  float sunR = mix(0.030, 0.062, uWarm);
+  col += uSun*(0.40*exp(-sdist*mix(8.0, 4.5, uWarm)) + 0.20*exp(-sdist*2.4))*sunVis;
+  vec3 disc = mix(uSun*1.06 + 0.1, vec3(1.0, 0.62, 0.32)*1.15, uWarm);
+  disc *= 1.0 - 0.08*uWarm*step(0.5, fract((P.y - sunP.y)*60.0))*smoothstep(0.0, -0.04, P.y - sunP.y);
+  col = mix(col, disc, smoothstep(sunR, sunR - 0.004, sdist)*sunVis);
+  vec2 moonP = vec2(aspect*0.70, 0.82);
+  float md = length(P - moonP);
+  float moonDisc = smoothstep(0.032, 0.028, md)*(1.0 - smoothstep(0.032, 0.028, length(P - moonP - vec2(0.013, 0.008))));
+  col += vec3(0.6, 0.72, 1.0)*0.22*exp(-md*6.0)*uMoon;
+  col = mix(col, vec3(1.0, 0.96, 0.88), moonDisc*uMoon);
+  vec2 lightP = mix(sunP, moonP, uMoon);
+  // stars
+  vec2 sg = P*140.0 + vec2(uCam*1.2, 0.0);
+  vec2 cell = floor(sg);
+  float st = h2(cell + uSeed);
+  vec2 sp = fract(sg) - 0.5 - (vec2(h2(cell + 3.1), h2(cell + 7.7)) - 0.5)*0.6;
+  float star = smoothstep(0.11, 0.0, length(sp))*step(0.962, st)*(0.55 + 0.45*sin(uTime*(1.5 + 3.0*h2(cell+1.0)) + st*40.0));
+  col += star*uNight*smoothstep(0.45, 0.75, P.y);
+
+  // ---------- far towering cumulus ----------
+  puffLayer(col, P + vec2(uCam*0.03, 0.0), normalize(lightP - P), 0.40, 0.34, 0.9, sd, 0.36, 0.085, 4, 0.016, 0.22, 0.0, 1.0, 0.42, br, aa);
+
+  // ---------- setting sun sits in front of the far towers, half sunk into the cloud band ----------
+  if (uWarm > 0.01) {
+    col += uSun*(0.35*exp(-sdist*7.0))*uWarm*sunVis;
+    col = mix(col, disc, smoothstep(sunR, sunR - 0.004, sdist)*sunVis*uWarm);
+  }
+
+  // ---------- crepuscular rays ----------
+  {
+    vec2 rd = P - sunP;
+    float ang = atan(rd.y, rd.x);
+    float rays = n1(ang*26.0 + uTime*0.04)*n1(ang*9.0 - uTime*0.025 + 3.0);
+    rays = smoothstep(0.18, 0.65, rays);
+    rays *= 1.0 + 0.9*uWarm;
+    float fall = exp(-length(rd)*1.3)*smoothstep(0.03, 0.2, -rd.y + 0.15);
+    col += uSun*rays*fall*0.22*uRays*sunVis*(1.0 - uNight);
+  }
+
+  // ---------- sunset-tinted haze band behind everything ----------
+  col += vec3(1.0, 0.45, 0.25)*exp(-abs(P.y - 0.42)*9.0)*0.10*uWarm;
+
+  // ---------- distant second island ----------
+  island(col, P.x + uCam*0.05, P.y, 0.30, 0.70, 0.42, 0.62, 0.0, aa, 31.0);
+
+  // ---------- sky whale ----------
+  {
+    float wx = mod(2.676 - uCam*0.12 - uTime*0.012, 4.2) - 1.0;
+    whale(col, P, vec2(wx, 0.885 + 0.012*sin(uTime*0.3)), 0.9, 0.30, lightP, aa);
+  }
+
+  // ---------- main floating city ----------
+  island(col, P.x + uCam*0.10, P.y, 1.12, 0.585, 1.45, 0.38, 1.0, aa, 0.0);
+
+  // ---------- mid cumulus band ----------
+  puffLayer(col, P + vec2(uCam*0.2 + 40.0, 0.0), normalize(lightP - P), 0.385, 0.10, 1.7, sd + 9.0, 0.28, 0.065, 3, 0.012, 0.10, 0.02, 0.8, 0.44, br, aa);
+
+  // ---------- hot-air balloons ----------
+  balloon(col, P, vec2(mod(1.34 - uCam*0.22, 3.6) - 0.4, 0.66 + 0.01*sin(uTime*0.5)), 0.018, vec3(0.86, 0.26, 0.22), vec3(0.98, 0.88, 0.70), 0.30, lightP, aa, 1.0);
+  balloon(col, P, vec2(mod(2.66 - uCam*0.38, 3.8) - 0.4, 0.56 + 0.012*sin(uTime*0.4 + 1.0)), 0.026, vec3(0.12, 0.50, 0.55), vec3(0.96, 0.74, 0.30), 0.18, lightP, aa, 2.0);
+  balloon(col, P, vec2(mod(2.35 - uCam*0.55, 4.0) - 0.4, 0.47 + 0.01*sin(uTime*0.45 + 2.0)), 0.032, vec3(0.95, 0.52, 0.20), vec3(0.45, 0.20, 0.42), 0.10, lightP, aa, 3.0);
+
+  // ---------- airships ----------
+  for (int k = 0; k < 2; k++) {
+    float fk = float(k);
+    float par = mix(0.32, 0.62, fk);
+    float sc = mix(0.6, 1.0, fk);
+    vec2 c = vec2(mix(0.55, 1.05, fk) - mod(uCam*par + uTime*0.004, 3.4) + 1.2 + fk*0.9, mix(0.69, 0.52, fk));
+    vec2 q = (P - c)/sc;
+    float env = length(q*vec2(1.0/0.05, 1.0/0.0165)) - 1.0;
+    float fin = step(-0.062, q.x)*step(q.x, -0.042)*step(abs(q.y), 0.016 - (q.x + 0.062)*0.2);
+    float gond = step(abs(q.x + 0.004), 0.014)*step(abs(q.y + 0.026), 0.0045);
+    float rope = step(abs(q.y + 0.02), 0.006)*step(abs(abs(q.x + 0.004) - 0.011), 0.0008);
+    float prop = step(abs(q.x - 0.056), 0.0012)*step(abs(q.y + 0.026), 0.007 + 0.004*sin(uTime*30.0));
+    float ship = max(max(smoothstep(aa/sc, -aa/sc, env*0.05), fin), max(max(gond, rope), prop));
+    if (ship > 0.0) {
+      vec3 sc3 = mix(uSil, uShade, mix(0.55, 0.25, fk));
+      float topLit = smoothstep(0.0, 0.016, q.y)*step(env, 0.0);
+      sc3 = mix(sc3, uLit*0.85, topLit*0.35*(1.0 - uNight));
+      // stripe on the envelope
+      sc3 *= 1.0 - 0.12*step(abs(q.x + 0.01), 0.004)*step(env, 0.0);
+      sc3 = mix(sc3, uSkyBot, mix(0.38, 0.18, fk));
+      col = mix(col, sc3, ship);
+    }
+    // nav lights at night
+    float blink = step(0.5, fract(uTime*0.8 + fk*0.37));
+    col += vec3(1.0, 0.3, 0.25)*exp(-length(q - vec2(-0.004, -0.032))*900.0)*uNight*blink*1.5;
+  }
+
+  // ---------- low strata behind the bridge ----------
+  for (int i = 0; i < 3; i++) {
+    float k = float(i)/2.0;
+    float par = mix(0.45, 0.78, k);
+    float X = P.x + uCam*par + sd*3.0 + float(i)*21.0;
+    float h = mix(0.37, 0.325, k) + mix(0.03, 0.022, k)*(fbm1(X*mix(2.0, 3.2, k)) - 0.5)*2.0;
+    float m = smoothstep(aa, -aa, P.y - h);
+    if (m <= 0.0) continue;
+    float din = h - P.y;
+    float l = 0.62 - din*7.0 + (br - 0.5)*0.25*uBrush;
+    vec3 c = mix(uShade, uMid, smoothstep(0.28, 0.33, l));
+    c = mix(c, uLit, smoothstep(0.56, 0.61, l));
+    c = mix(c, uSkyBot, (1.0 - k)*0.2);
+    col = mix(col, c, m);
+  }
+
+  // ---------- bridge ----------
+  float yb = 0.34;
+  float Xb = P.x + uCam;
+  float span = 1.6;
+  float sx = fract(Xb/span);
+  float towerX = sx*span; towerX = min(towerX, span - towerX);
+  float sil = 0.0;
+  sil = max(sil, smoothstep(aa, -aa, abs(P.y - (yb - 0.006)) - 0.006));
+  sil = max(sil, smoothstep(aa*0.7, -aa*0.7, abs(P.y - (yb + 0.014)) - 0.0012));
+  float postX = fract(Xb/0.03);
+  sil = max(sil, smoothstep(aa, -aa, abs(postX - 0.5)*0.03 - 0.0009)*step(yb, P.y)*step(P.y, yb + 0.014));
+  float px = fract(Xb/0.4)*0.4; px = min(px, 0.4 - px);
+  sil = max(sil, smoothstep(aa, -aa, px - 0.008 - 0.004*smoothstep(yb, 0.0, P.y))*step(P.y, yb));
+  sil = max(sil, smoothstep(aa, -aa, towerX - 0.0065)*step(P.y, yb + 0.12));
+  sil = max(sil, smoothstep(aa, -aa, towerX - 0.013)*step(abs(P.y - (yb + 0.105)), 0.004));
+  float s2 = sx*2.0 - 1.0;
+  float cy = yb + 0.018 + 0.10*s2*s2;
+  sil = max(sil, smoothstep(aa*0.8, -aa*0.8, abs(P.y - cy) - 0.0013));
+  float hgx = fract(Xb/0.045)*0.045; hgx = min(hgx, 0.045 - hgx);
+  sil = max(sil, smoothstep(aa*0.6, -aa*0.6, hgx - 0.0006)*step(yb + 0.012, P.y)*step(P.y, cy));
+
+  // ---------- train ----------
+  float tx0 = aspect*0.20 + 0.03*sin(uTime*0.13);
+  float carW = 0.118, gap = 0.0055, carH = 0.03;
+  float lx = P.x - tx0;
+  float nCars = 7.0;
+  float ci = floor(lx/(carW + gap));
+  float cxl = lx - ci*(carW + gap);
+  float onTrain = step(0.0, lx)*step(ci, nCars - 1.0);
+  float ty0 = yb + 0.0015;
+  float isLoco = step(nCars - 1.5, ci);
+  vec2 cq = vec2(cxl - carW*0.5, P.y - (ty0 + carH*0.5 + 0.004));
+  vec2 bsz = vec2(carW*0.5 - 0.006, carH*0.5 - 0.004);
+  float nose = isLoco*smoothstep(carW*0.55, carW, cxl)*(P.y - ty0)*0.9;
+  vec2 dq = abs(cq) - bsz + vec2(nose, 0.0);
+  float body = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - 0.005;
+  float tr = smoothstep(aa, -aa, body)*onTrain;
+  vec2 chq = vec2(cxl - carW*0.62, P.y - (ty0 + carH + 0.011));
+  float chim = smoothstep(aa, -aa, max(abs(chq.x) - 0.0055, abs(chq.y) - 0.008))*isLoco*onTrain;
+  tr = max(tr, chim);
+  float wx = fract(cxl/0.024)*0.024 - 0.012;
+  tr = max(tr, smoothstep(aa, -aa, length(vec2(wx, P.y - (ty0 + 0.002))) - 0.0042)*onTrain*step(0.008, cxl)*step(cxl, carW - 0.008));
+  sil = max(sil, tr);
+  float wwx = fract((cxl - 0.012)/0.017);
+  float win = step(0.012, cxl)*step(cxl, carW - 0.02 - isLoco*0.05)*step(0.18, wwx)*step(wwx, 0.78)
+            *step(ty0 + 0.014, P.y)*step(P.y, ty0 + 0.026)*onTrain*(1.0 - chim);
+  float flick = 0.85 + 0.15*h1(ci + floor(uTime*0.4));
+  // silhouette with a warm sun-kissed top edge on the train
+  vec3 silCol = uSil;
+  float topEdge = onTrain*smoothstep(ty0 + carH - 0.004, ty0 + carH + 0.004, P.y)*(1.0 - chim);
+  silCol = mix(silCol, mix(uSil, uSun, 0.45), topEdge*(1.0 - uNight)*0.8);
+  vec3 winCol = mix(mix(uSil, uMid, 0.35), vec3(1.0, 0.8, 0.48)*1.15*flick, uNight);
+  col = mix(col, silCol, sil);
+  col = mix(col, winCol, win*sil);
+  col += vec3(1.0, 0.7, 0.4)*onTrain*exp(-abs(P.y - (ty0 + 0.02))*60.0)*uNight*0.12*(1.0 - sil);
+  vec2 hl = P - vec2(tx0 + nCars*(carW+gap) - gap - 0.004, ty0 + 0.012);
+  col += vec3(1.0, 0.85, 0.6)*uNight*(0.9*exp(-length(hl)*90.0) + 0.25*exp(-abs(hl.y)*90.0)*smoothstep(0.0, 0.02, hl.x)*exp(-hl.x*6.0));
+
+  // ---------- steam (painted puffs) ----------
+  vec2 chimTop = vec2(tx0 + (nCars-1.0)*(carW+gap) + carW*0.62, ty0 + carH + 0.02);
+  float smoke = 0.0, smokeL = 0.0;
+  for (int j = 0; j < 9; j++) {
+    float fj = float(j);
+    float age = fj + fract(uTime*0.9);
+    vec2 c = chimTop + vec2(-age*0.034 - age*age*0.0025, age*0.010 + 0.004*sin(age*1.7 + uTime));
+    float r = 0.010 + age*0.0065;
+    vec2 dv = (P - c)*vec2(0.8, 1.0);
+    float d = length(dv);
+    float wob = n1(atan(dv.y, dv.x)*3.0 + fj*5.0 + uTime*0.6)*0.35;
+    float a = smoothstep(r*(1.0 + wob*0.4), r*(0.55 + wob*0.2), d)*(1.0 - age/9.5);
+    if (a > smoke) { smoke = a; smokeL = clamp(0.5 + dot(normalize(dv + 1e-5), normalize(lightP - c))*0.5, 0.0, 1.0); }
+  }
+  vec3 smokeCol = mix(uMid, uLit, smoothstep(0.4, 0.6, smokeL + (br - 0.5)*0.3*uBrush));
+  col = mix(col, smokeCol, smoke*0.95);
+
+  // ---------- birds ----------
+  for (int b = 0; b < 7; b++) {
+    float fb = float(b);
+    vec2 bc = vec2(aspect*0.62 + fb*0.035 + 0.05*sin(uTime*0.2 + fb) + mod(uTime*0.01, 0.0), 0.50 + 0.02*sin(fb*2.3) + 0.012*fb*(1.0 - mod(fb, 2.0)) + 0.006*sin(uTime*0.7 + fb));
+    float flap = sin(uTime*7.0 + fb*1.9)*0.6;
+    vec2 q = P - bc;
+    float s = 0.006 + 0.002*h1(fb);
+    q.x = abs(q.x);
+    float wing = abs(q.y - q.x*flap - 0.0) ;
+    float bird = step(q.x, s)*smoothstep(aa*0.9 + 0.0009, 0.0006, wing - q.x*0.15);
+    col = mix(col, uSil*1.1, bird*(1.0 - uNight*0.8));
+  }
+
+  // ---------- front cloud sea ----------
+  {
+    vec2 Lf = normalize(lightP - P + vec2(0.0, 0.25));
+    puffLayer(col, P + vec2(uCam*1.35 + 70.0 + uTime*0.006, 0.0), Lf, 0.235, 0.06, 1.6, sd + 20.0, 0.15, 0.10, 4, 0.012, 0.0, 0.03, 0.66, 0.50, br, aa);
+    puffLayer(col, P + vec2(uCam*2.3 + 103.0 + uTime*0.012, 0.0), Lf, 0.11, 0.08, 1.1, sd + 25.0, 0.10, 0.16, 4, 0.018, 0.0, 0.07, 0.62, 0.50, br, aa);
+  }
+
+  // ---------- golden light path on the cloud sea under the setting sun ----------
+  {
+    float lp = exp(-abs(P.x - sunP.x)*mix(9.0, 5.0, smoothstep(0.0, 0.33, 0.33 - P.y)))*smoothstep(0.34, 0.2, P.y);
+    float shimmer = 0.6 + 0.4*n2(vec2(P.x*30.0, P.y*120.0 - uTime*0.8));
+    col += vec3(1.0, 0.62, 0.30)*lp*shimmer*0.30*uWarm;
+  }
+  // ---------- night: city light spilling onto the clouds ----------
+  if (uNight > 0.01) {
+    float cityX = 1.12 - uCam*0.10;
+    vec2 dv = vec2(P.x - cityX, P.y - 0.42);
+    float spill = exp(-length(dv*vec2(1.3, 3.0))*3.2);
+    vec3 sc = mix(vec3(1.0, 0.18, 0.6), vec3(0.15, 0.85, 1.0), smoothstep(-0.35, 0.35, dv.x));
+    col += sc*spill*0.22*uNight*(0.85 + 0.15*sin(uTime*0.7));
+    // sweeping searchlights from the rooftops
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k);
+      vec2 o = vec2(cityX + (fk - 1.0)*0.17, 0.64 + 0.02*fk);
+      float ang = 1.5708 + (fk - 1.0)*0.35 + 0.32*sin(uTime*(0.35 + 0.1*fk) + fk*2.0);
+      vec2 d = vec2(cos(ang), sin(ang));
+      vec2 rel = P - o;
+      float along = dot(rel, d);
+      float perp = abs(rel.x*d.y - rel.y*d.x);
+      float beam = step(0.0, along)*exp(-perp/(0.004 + max(along, 0.0)*0.035)*1.2)*exp(-max(along, 0.0)*1.6);
+      col += mix(vec3(0.7, 0.9, 1.0), vec3(1.0, 0.5, 0.9), step(1.5, fk))*beam*0.22*uNight;
+    }
+    // sky traffic: streams of light circling the city
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k);
+      float rx = (P.x - cityX)/(0.50 - fk*0.06);
+      float lyy = 0.62 + fk*0.04 - 0.035*(1.0 - rx*rx)*(mod(fk, 2.0)*2.0 - 1.0);
+      float lane = smoothstep(0.0022, 0.0, abs(P.y - lyy))*step(abs(rx), 1.0)*smoothstep(1.0, 0.8, abs(rx));
+      float dash = step(0.55, fract((P.x - cityX)*(55.0 + fk*10.0) - uTime*(1.6 + fk*0.6)*(mod(fk, 2.0)*2.0 - 1.0)));
+      vec3 lc = mod(fk, 2.0) < 0.5 ? vec3(1.0, 0.3, 0.35) : vec3(1.0, 0.95, 0.85);
+      col += lc*lane*dash*0.9*uNight;
+    }
+  }
+  // ---------- cherry petals drifting through the golden light ----------
+  if (uWarm > 0.01) {
+    for (int j = 0; j < 26; j++) {
+      float fj = float(j);
+      float sp = 0.5 + h1(fj*3.3);
+      vec2 pp = vec2(fract(h1(fj*1.7) - uTime*0.018*sp - uCam*0.05)*aspect*1.15 - 0.08,
+                     fract(h1(fj*5.1) - uTime*0.012*sp)*1.0);
+      pp.x += 0.012*sin(uTime*1.3*sp + fj);
+      vec2 q = P - pp;
+      float an = uTime*2.0*sp + fj;
+      q = vec2(q.x*cos(an) - q.y*sin(an), q.x*sin(an) + q.y*cos(an));
+      float pet = smoothstep(1.0, 0.7, length(q*vec2(1.0/0.0062, 1.0/(0.0036*(0.4 + 0.6*abs(sin(uTime*3.0*sp + fj)))))));
+      col = mix(col, mix(vec3(1.0, 0.72, 0.82), vec3(1.0, 0.88, 0.92), h1(fj)), pet*uWarm*0.95);
+    }
+  }
+  // ---------- a V-formation of birds crossing the sunset ----------
+  if (uWarm > 0.01) {
+    vec2 fc = vec2(aspect + 0.25 - fract(uTime/30.0)*(aspect + 0.5), sunP.y + 0.10 + 0.03*sin(uTime*0.2));
+    for (int b = 0; b < 11; b++) {
+      float fb = float(b);
+      float side = mod(fb, 2.0)*2.0 - 1.0;
+      float rank = floor((fb + 1.0)/2.0);
+      vec2 bc = fc + vec2(rank*0.022, side*rank*0.012) + 0.003*vec2(sin(uTime + fb), cos(uTime*1.3 + fb));
+      vec2 q = P - bc;
+      float flap = sin(uTime*8.0 + fb*0.9)*0.55;
+      q.x = abs(q.x);
+      float wing = abs(q.y - q.x*flap);
+      float bird = step(q.x, 0.0075)*smoothstep(aa + 0.0011, 0.0006, wing - q.x*0.12);
+      col = mix(col, uSil*0.9, bird*uWarm);
+    }
+  }
+
+  // ---------- floating lanterns (night) ----------
+  if (uNight > 0.01) {
+    for (int j = 0; j < 18; j++) {
+      float fj = float(j);
+      float life = fract(uTime*0.025 + h1(fj*7.1));
+      vec2 lp = vec2(fract(h1(fj*3.7) - uCam*0.08*(0.6 + h1(fj))*0.3)*aspect*1.1 - 0.05 + 0.02*sin(uTime*0.5 + fj), 0.08 + life*0.62);
+      float size = mix(0.6, 1.3, h1(fj*5.3));
+      float dd = length((P - lp)*vec2(1.0, 0.8))/size;
+      float fade = smoothstep(0.0, 0.1, life)*smoothstep(1.0, 0.75, life);
+      col += vec3(1.0, 0.62, 0.3)*(smoothstep(0.0062, 0.003, dd)*1.25 + exp(-dd*55.0)*0.4)*uNight*fade;
+    }
+  }
+
+  // ---------- golden dust motes drifting in the light ----------
+  {
+    float dayish = 1.0 - uNight;
+    if (dayish > 0.01) {
+      for (int j = 0; j < 22; j++) {
+        float fj = float(j);
+        vec2 mp = vec2(fract(h1(fj*1.9) - uTime*0.006*(0.5 + h1(fj)) - uCam*0.15*(0.4 + 0.6*h1(fj*2.3)))*aspect*1.1 - 0.05,
+                       0.12 + 0.75*h1(fj*4.7) + 0.02*sin(uTime*0.6 + fj));
+        float dd = length(P - mp);
+        float tw = 0.5 + 0.5*sin(uTime*2.3 + fj*4.0);
+        col += uSun*(smoothstep(0.0028, 0.0008, dd)*0.9 + exp(-dd*260.0)*0.25)*tw*dayish*0.8;
+      }
+    }
+  }
+  // ---------- shooting stars ----------
+  if (uNight > 0.01) {
+    for (int j = 0; j < 2; j++) {
+      float fj = float(j);
+      float per = 5.5 + fj*2.7;
+      float ph = fract(uTime/per + fj*0.37);
+      float id = floor(uTime/per + fj*0.37);
+      vec2 st0 = vec2(0.3 + 1.2*h1(id*3.1 + fj), 0.95 - 0.12*h1(id*7.7));
+      vec2 dir = normalize(vec2(-1.0, -0.42));
+      vec2 head = st0 + dir*ph*0.9;
+      vec2 rel = P - head;
+      float along = dot(rel, -dir);
+      float perp = abs(dot(rel, vec2(-dir.y, dir.x)));
+      float trail = step(0.0, along)*step(along, 0.16)*smoothstep(0.0016, 0.0, perp)*(1.0 - along/0.16);
+      float life = smoothstep(0.0, 0.08, ph)*smoothstep(0.35, 0.18, ph);
+      col += vec3(0.9, 0.95, 1.0)*trail*life*uNight*1.4;
+    }
+  }
+
+  // ---------- finishing: canvas, grade, vignette, grain ----------
+  col *= 1.0 + (br - 0.5)*0.03*uBrush;
+  col *= 0.985 + 0.03*n2(frag*0.35);
+  float lum = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(lum), col, 1.1);
+  col = mix(col, col*vec3(0.9, 1.0, 1.08), (1.0 - smoothstep(0.0, 0.5, lum))*0.35);
+  col = mix(col, col*vec3(1.05, 1.0, 0.94), smoothstep(0.55, 1.0, lum)*0.3);
+  vec2 qv = frag/uRes;
+  col *= mix(0.80, 1.0, smoothstep(1.25, 0.35, length((qv - 0.5)*vec2(1.0, 1.15))));
+  col += (h2(frag + fract(uTime*7.0)*400.0) - 0.5)*uGrain;
+  gl_FragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(0.96)), 1.0);
+}
+</script>
+
+<script>window.__WALL = true;</script>
+<script>
+(() => {
+  const qs = new URLSearchParams(location.search);
+  const RENDER = qs.has('render');
+  const WALL = qs.has('wallpaper') || window.__WALL === true;
+  if (WALL) document.body.classList.add('wall');
+  function clockTod() {
+    const d = new Date(); const h = d.getHours() + d.getMinutes() / 60;
+    const K = [[0,0.97],[5,0.97],[6.5,0.72],[7.5,0.30],[12,0.08],[16,0.22],[17.5,0.42],[18.6,0.56],[19.4,0.74],[20.5,0.97],[24,0.97]];
+    for (let i = 0; i < K.length - 1; i++) if (h <= K[i+1][0]) { const f = (h - K[i][0]) / (K[i+1][0] - K[i][0]); return K[i][1] + (K[i+1][1] - K[i][1]) * f; }
+    return 0.97;
+  }
+
+  const canvas = document.getElementById('c');
+  const gl = canvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: RENDER });
+  const vs = 'attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }';
+  function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {}; ['uRes','uTime','uCam','uZoom','uTod','uCover','uBrush','uRays','uGrain','uSeed','uNight','uSunH','uMoon','uWarm','uSunX','uSkyTop','uSkyBot','uSun','uLit','uMid','uShade','uSil'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+
+  const KT = [0.0, 0.35, 0.55, 0.72, 1.0];
+  const PAL = {
+    uSkyTop: [[0.07,0.30,0.74],[0.26,0.42,0.78],[0.42,0.32,0.56],[0.12,0.10,0.30],[0.015,0.025,0.075]],
+    uSkyBot: [[0.58,0.79,0.97],[1.00,0.82,0.60],[1.00,0.58,0.36],[0.72,0.36,0.42],[0.06,0.09,0.19]],
+    uSun:    [[1.00,0.93,0.78],[1.00,0.80,0.50],[1.00,0.52,0.26],[0.92,0.40,0.34],[0.50,0.60,0.92]],
+    uLit:    [[1.00,0.97,0.91],[1.00,0.92,0.74],[1.00,0.80,0.56],[0.94,0.56,0.54],[0.32,0.39,0.60]],
+    uMid:    [[0.78,0.86,0.98],[1.00,0.70,0.55],[0.97,0.43,0.35],[0.62,0.30,0.44],[0.15,0.20,0.36]],
+    uShade:  [[0.40,0.52,0.84],[0.80,0.42,0.42],[0.66,0.19,0.27],[0.32,0.14,0.30],[0.06,0.08,0.19]],
+    uSil:    [[0.11,0.15,0.28],[0.34,0.13,0.14],[0.30,0.07,0.11],[0.12,0.05,0.12],[0.02,0.025,0.06]],
+  };
+  const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  function palAt(name, t) {
+    const k = PAL[name];
+    for (let i = 0; i < KT.length - 1; i++) if (t <= KT[i+1]) { const f = ss(0, 1, (t - KT[i]) / (KT[i+1] - KT[i])); return k[i].map((v, j) => v + (k[i+1][j] - v) * f); }
+    return k[k.length-1];
+  }
+
+  const P = { tod: 0.10, speed: 0.26, zoom: 1.0, cover: 0.5, brush: 1.0, rays: 0.7, grain: 0.03, quality: 1.0, seed: 3 };
+  const NAMES = ['午后','傍晚','黄昏','蓝调','夜'], NAMES_EN = ['Afternoon','Golden','Dusk','Blue hour','Night'];
+  const DEFS = [
+    { k: 'tod',     zh: '时刻',     en: 'Time of day', min: 0, max: 1, step: 0.01, fmt: v => NAMES[Math.min(4, Math.floor(v*4.999))], fmtEn: v => NAMES_EN[Math.min(4, Math.floor(v*4.999))] },
+    { k: 'cover',   zh: '云量',     en: 'Cloud cover', min: 0, max: 1, step: 0.01 },
+    { k: 'speed',   zh: '行进速度', en: 'Speed',       min: 0, max: 1.2, step: 0.01 },
+    { k: 'zoom',    zh: '视角缩放', en: 'Zoom',        min: 0.6, max: 1.8, step: 0.01 },
+    { k: 'brush',   zh: '笔触强度', en: 'Brushwork',   min: 0, max: 2, step: 0.01 },
+    { k: 'rays',    zh: '光束',     en: 'Light rays',  min: 0, max: 2, step: 0.01 },
+    { k: 'grain',   zh: '胶片颗粒', en: 'Grain',       min: 0, max: 0.1, step: 0.001, fmt: v => v.toFixed(3) },
+    { k: 'quality', zh: '画质',     en: 'Quality',     min: 0.4, max: 1, step: 0.05, fmt: v => Math.round(v*100) + '%' },
+  ];
+  let lang = 'zh';
+  const rows = document.getElementById('rows');
+  const inputs = {};
+  DEFS.forEach(d => {
+    const r = document.createElement('div'); r.className = 'row';
+    r.innerHTML = `<div class="lab"><span class="nm"></span><span class="val"></span></div><input type="range" min="${d.min}" max="${d.max}" step="${d.step}">`;
+    rows.appendChild(r);
+    const inp = r.querySelector('input');
+    inp.value = P[d.k];
+    inp.addEventListener('input', () => { P[d.k] = parseFloat(inp.value); syncRow(d); if (d.k === 'quality') resize(); });
+    inputs[d.k] = { d, inp, nm: r.querySelector('.nm'), val: r.querySelector('.val') };
+  });
+  function syncRow(d) {
+    const o = inputs[d.k], v = P[d.k];
+    o.inp.value = v;
+    o.inp.style.setProperty('--p', ((v - d.min) / (d.max - d.min) * 100) + '%');
+    o.nm.textContent = lang === 'zh' ? d.zh : d.en;
+    o.val.textContent = lang === 'en' && d.fmtEn ? d.fmtEn(v) : d.fmt ? d.fmt(v) : v.toFixed(2);
+  }
+  function syncAll() { DEFS.forEach(syncRow); }
+  let autoFlow = false;
+  function updateAutoLabel() { const b = document.getElementById('auto'); b.textContent = lang === 'zh' ? `时间流动：${autoFlow ? '开' : '关'}` : `Time flow: ${autoFlow ? 'on' : 'off'}`; }
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-zh]').forEach(el => el.textContent = el.dataset[lang]);
+    document.getElementById('lang').textContent = lang === 'zh' ? 'EN' : '中';
+    updateAutoLabel(); syncAll();
+  }
+  document.getElementById('lang').onclick = () => { lang = lang === 'zh' ? 'en' : 'zh'; applyLang(); };
+  const panel = document.getElementById('panel');
+  document.getElementById('close').onclick = () => panel.classList.add('hidden');
+  document.getElementById('seed').onclick = () => { P.seed = Math.floor(Math.random() * 1000); };
+  document.getElementById('auto').onclick = () => { autoFlow = !autoFlow; updateAutoLabel(); };
+  addEventListener('keydown', e => { if (e.key === 'h' || e.key === 'H') panel.classList.toggle('hidden'); });
+  applyLang();
+
+  let cam = 2.0;
+  function resize() {
+    const dpr = RENDER ? 1 : Math.min(window.devicePixelRatio || 1, 2) * P.quality;
+    const w = Math.round(innerWidth * dpr), h = Math.round(innerHeight * dpr);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+  }
+  function draw(time) {
+    const t = P.tod;
+    gl.uniform2f(U.uRes, canvas.width, canvas.height);
+    gl.uniform1f(U.uTime, time);
+    gl.uniform1f(U.uCam, cam);
+    gl.uniform1f(U.uZoom, P.zoom);
+    gl.uniform1f(U.uTod, t);
+    gl.uniform1f(U.uCover, P.cover);
+    gl.uniform1f(U.uBrush, P.brush);
+    gl.uniform1f(U.uRays, P.rays);
+    gl.uniform1f(U.uGrain, P.grain);
+    gl.uniform1f(U.uSeed, P.seed);
+    gl.uniform1f(U.uNight, ss(0.62, 0.9, t));
+    gl.uniform1f(U.uMoon, ss(0.66, 0.86, t));
+    gl.uniform1f(U.uSunH, 0.86 - 0.42 * ss(0.0, 0.62, t));
+    gl.uniform1f(U.uWarm, ss(0.12, 0.36, t) * (1 - ss(0.60, 0.76, t)));
+    gl.uniform1f(U.uSunX, 0.68 - 0.40 * ss(0.05, 0.55, t));
+    for (const n in PAL) gl.uniform3fv(U[n], palAt(n, t));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  if (RENDER) {
+    resize();
+    window.__setParams = (o) => { Object.assign(P, o); syncAll(); };
+    window.__frame = (time, camPos) => { cam = camPos; draw(time); gl.finish(); return true; };
+    window.__ui = (o) => {
+      const cur = document.getElementById('cursor');
+      if (o.cursor) { cur.style.display = 'block'; cur.style.transform = `translate(${o.cursor[0]}px, ${o.cursor[1]}px) scale(${o.press ? 0.9 : 1})`; } else cur.style.display = 'none';
+      if (o.fade !== undefined) document.getElementById('fade').style.opacity = o.fade;
+      if (o.titleOpacity !== undefined) document.getElementById('title').style.opacity = o.titleOpacity;
+      if (o.panelOpacity !== undefined) panel.style.opacity = o.panelOpacity;
+    };
+    window.__thumb = (k) => { const r = inputs[k].inp.getBoundingClientRect(); const d = inputs[k].d; const f = (P[k] - d.min) / (d.max - d.min); return [r.left + 7 + f * (r.width - 14), r.top + r.height / 2]; };
+    window.__ready = true;
+  } else {
+    addEventListener('resize', resize);
+    resize();
+    let last = performance.now(), clock = 0;
+    function loop(now) {
+      const dt = Math.min(0.1, (now - last) / 1000); last = now;
+      clock += dt; cam += dt * P.speed * 0.6;
+      if (WALL) P.tod = clockTod();
+      else if (autoFlow) { P.tod = (P.tod + dt / 90) % 1; syncRow(DEFS[0]); }
+      draw(clock);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
