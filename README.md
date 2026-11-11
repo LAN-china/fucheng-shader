@@ -3,15 +3,15 @@
 > 一座漂在云上的城市，从午后一直走到夜里。全部画面由 GLSL 着色器实时生成，没有用一张图片或视频素材。
 > A floating city above a sea of clouds, from afternoon to night, drawn in real time by a GLSL shader. No images, no video, no 3D models.
 
-![dusk to night](screenshots/dusk-to-night.gif)
+![dusk to night](dusk-to-night.gif)
 
-**在线体验 / Live demo:** `https://<你的用户名>.github.io/fucheng-shader/`
+**在线体验 / Live demo:** `https://lan-china.github.io/fucheng-shader/`
 
 | 午后 Afternoon | 傍晚 Golden hour |
 |---|---|
-| ![](screenshots/day.jpg) | ![](screenshots/golden.jpg) |
+| ![](day.jpg) | ![](golden.jpg) |
 | **黄昏 Dusk** | **夜之城 Night city** |
-| ![](screenshots/dusk.jpg) | ![](screenshots/night.jpg) |
+| ![](dusk.jpg) | ![](night.jpg) |
 
 ---
 
@@ -40,13 +40,13 @@
 **Windows：Lively Wallpaper（免费，微软商店可下载）**
 - 方法一（离线，推荐）：下载本仓库（Code → Download ZIP），解压后把 `wallpaper.html` 拖进 Lively
 - 方法二（在线）：在 Lively 里选择“添加网址”，填入
-  `https://<你的用户名>.github.io/fucheng-shader/?wallpaper=1`
+  `https://lan-china.github.io/fucheng-shader/?wallpaper=1`
 
 **Windows：Wallpaper Engine（Steam）**
 - 新建网页壁纸，导入 `wallpaper.html`
 
 **Mac：Plash（免费，App Store）**
-- 添加网址 `https://<你的用户名>.github.io/fucheng-shader/?wallpaper=1`
+- 添加网址 `https://lan-china.github.io/fucheng-shader/?wallpaper=1`
 
 > 壁纸会一直使用显卡，笔记本建议接电源使用。Lively 和 Wallpaper Engine 在你全屏玩游戏时会自动暂停壁纸。
 
@@ -80,7 +80,7 @@ Everything is computed per pixel, per frame by a fragment shader.
 Wallpaper mode hides the UI and follows your computer's **real clock**.
 
 - **Lively Wallpaper (Windows, free):** drag `wallpaper.html` in, or add the URL
-  `https://<your-username>.github.io/fucheng-shader/?wallpaper=1`
+  `https://lan-china.github.io/fucheng-shader/?wallpaper=1`
 - **Wallpaper Engine (Steam):** create a web wallpaper from `wallpaper.html`
 - **Plash (macOS, free):** add the URL above
 
